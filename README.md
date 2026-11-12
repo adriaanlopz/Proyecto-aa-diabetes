@@ -52,7 +52,7 @@ Modelo: **dos partes** (*hurdle*). Un *gradient boosting* estima la probabilidad
 
 Mejora un 26 % el MAE de la mejor referencia. Las variables que más pesan son la salud percibida, la dificultad para caminar, los días de mala salud mental y la edad. Detalle completo y figuras 29–31 en el notebook 04.
 
-**Decisión abierta.** El MAE premia predecir 0 (60 % de ceros). El modelo de la media (boosting de Poisson) tiene peor MAE (4,28) pero mejor RMSE (6,96) y R² (0,46), y acierta el total de días (el de dos partes lo subestima un 12 %). Hay que confirmar con el profesor la métrica de la fase competitiva; cambiar de modelo es una línea en `modelado.CONFIG_FINAL`.
+**Decisión del equipo: dos partes (mediana).** El MAE premia predecir 0 (60 % de ceros). El modelo de la media (boosting de Poisson) tiene peor MAE (4,28) pero mejor RMSE (6,96) y R² (0,46), y acierta el total de días (el de dos partes lo subestima un 12 %). Se preguntará al profesor la métrica de la fase competitiva; si fuera el RMSE, cambiar de modelo es una línea en `modelado.CONFIG_FINAL`.
 
 ## Estructura
 
