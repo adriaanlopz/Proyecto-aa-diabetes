@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.venv/
+venv/
+.env
+.DS_Store
+Thumbs.db
+
+# ZIP de entrega generados por src/empaquetar.py
+entregas/
+
+# Datos y material del Campus: se quedan solo en local (el repositorio es público)
+proy_diabetes_dev.csv
+data/
+ejemplos/
+Proyecto.pdf
