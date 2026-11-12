@@ -6,7 +6,7 @@ Proyecto de la asignatura de Aprendizaje Automático (UIE). A partir de la encue
 |---|---|---|---|
 | Clusterización | Perfiles de paciente interpretables | — | Preprocesado |
 | Clasificación | Cribado de diabetes | `diabetes` (sí/no) | **Modelada y servida en la API** |
-| Regresión | Carga de enfermedad | `dias_salud_fisica_mala` (0–30) | Preprocesado |
+| Regresión | Carga de enfermedad | `dias_salud_fisica_mala` (0–30) | **Modelada y servida en la API** |
 
 ## Estado
 
@@ -21,7 +21,8 @@ Proyecto de la asignatura de Aprendizaje Automático (UIE). A partir de la encue
 - [x] Artefacto final reproducible → `python src/entrenar.py clasificacion` → `artifacts/`
 - [x] API común respondiendo para `clasificacion` → `src/servicio.py`, con 16 pruebas en `tests/`
 - [x] ZIP de entrega con `data/processed/` y artefactos → `python src/empaquetar.py`
-- [ ] Regresión y clusterización (siguiente fase)
+- [x] Regresión modelada y servida → `notebooks/04_modelado_regresion.ipynb` y `python src/entrenar.py regresion`
+- [ ] Clusterización (siguiente fase)
 
 ## Resultados: clasificación (`diabetes`)
 
@@ -39,6 +40,20 @@ Modelo: **ensamble por voto suave** de una regresión logística con *splines* y
 
 Detecta 644 de los 848 diabéticos de test. Uno de cada 1,7 pacientes citados es diabético, frente a uno de cada 3 si se citara al azar. Las variables más influyentes son salud percibida, IMC, edad, hipertensión y colesterol. Detalle completo y figuras 21–28 en el notebook 03.
 
+## Resultados: regresión (`dias_salud_fisica_mala`)
+
+Modelo: **dos partes** (*hurdle*). Un *gradient boosting* estima la probabilidad de tener algún día de mala salud física; si es de 0,5 o más, otro *gradient boosting* predice la mediana de los días; si no, predice 0. Predicciones recortadas a [0, 30].
+
+| | CV repetida 5 × 5 | Test (n = 2 550) · IC 95 % | Dummy mediana (0) | Dummy media |
+|---|---|---|---|---|
+| MAE (días) | 3,70 | **3,72** [3,44–3,97] | 5,00 | 6,86 |
+| RMSE (días) | 7,48 | 7,64 [7,20–8,07] | 10,69 | 9,45 |
+| R² | 0,37 | 0,35 [0,28–0,41] | −0,28 | 0,00 |
+
+Mejora un 26 % el MAE de la mejor referencia. Las variables que más pesan son la salud percibida, la dificultad para caminar, los días de mala salud mental y la edad. Detalle completo y figuras 29–31 en el notebook 04.
+
+**Decisión abierta.** El MAE premia predecir 0 (60 % de ceros). El modelo de la media (boosting de Poisson) tiene peor MAE (4,28) pero mejor RMSE (6,96) y R² (0,46), y acierta el total de días (el de dos partes lo subestima un 12 %). Hay que confirmar con el profesor la métrica de la fase competitiva; cambiar de modelo es una línea en `modelado.CONFIG_FINAL`.
+
 ## Estructura
 
 ```
@@ -55,16 +70,20 @@ Proyecto/
 ├── notebooks/
 │   ├── 01_eda.ipynb                EDA (resumen ejecutivo, 10 secciones, figuras 01–20)
 │   ├── 02_preprocesado.ipynb       ejecución del preprocesado y comprobaciones
-│   └── 03_modelado_clasificacion.ipynb   selección, ajuste, umbral, test e interpretación (figuras 21–28)
+│   ├── 03_modelado_clasificacion.ipynb   selección, ajuste, umbral, test e interpretación (figuras 21–28)
+│   └── 04_modelado_regresion.ipynb       métrica, comparación, ajuste, test e interpretación (figuras 29–31)
 ├── data/processed/                 datos limpios y particiones transformadas (generado por el notebook 02)
 ├── models/preprocesadores/         preprocesadores ajustados solo con train (notebook 02)
 ├── artifacts/
 │   ├── proy_modelo_clasificacion.joblib   modelo que carga la API (datos crudos → predicción)
-│   └── proy_modelo_clasificacion.json     metadatos: versión, columnas, configuración y métricas
+│   ├── proy_modelo_clasificacion.json     metadatos: versión, columnas, configuración y métricas
+│   ├── proy_modelo_regresion.joblib       modelo de regresión que carga la API
+│   └── proy_modelo_regresion.json         sus metadatos
 ├── reports/
 │   ├── figures/                    figuras para informe y slides (PNG, 150 dpi)
-│   └── metricas_clasificacion.json métricas de CV y test (las genera el notebook 03)
-├── tests/test_servicio.py          pruebas del contrato de la API
+│   ├── metricas_clasificacion.json métricas de CV y test (las genera el notebook 03)
+│   └── metricas_regresion.json     métricas de CV y test (las genera el notebook 04)
+├── tests/                          pruebas del contrato de la API (clasificación y regresión)
 └── ejemplos/peticion_clasificacion.json   petición de demostración (5 pacientes reales de test)
 ```
 
@@ -77,9 +96,11 @@ pip install -r requirements.txt
 python -m jupyter nbconvert --to notebook --execute --inplace notebooks/01_eda.ipynb
 python -m jupyter nbconvert --to notebook --execute --inplace notebooks/02_preprocesado.ipynb
 python -m jupyter nbconvert --to notebook --execute --inplace notebooks/03_modelado_clasificacion.ipynb
+python -m jupyter nbconvert --to notebook --execute --inplace notebooks/04_modelado_regresion.ipynb
 
 # 2. Artefacto final que sirve la API (reentrena con los 12 750 pacientes)
 python src/entrenar.py clasificacion
+python src/entrenar.py regresion
 
 # 3. Pruebas del servicio
 python -m pytest tests -q
@@ -92,7 +113,7 @@ Todo usa una semilla fija (`SEMILLA = 42`), así que el resultado es reproducibl
 
 ## API
 
-El servicio implementa el contrato común con la plantilla del profesor, sin cambios. Carga los artefactos de `artifacts/` y sirve las líneas cuyo artefacto existe; ahora mismo, `clasificacion`.
+El servicio implementa el contrato común con la plantilla del profesor, sin cambios. Carga los artefactos de `artifacts/` y sirve las líneas cuyo artefacto existe; ahora mismo, `clasificacion` y `regresion`.
 
 ```bash
 uvicorn src.servicio:app --host 0.0.0.0 --port 8000
@@ -100,8 +121,8 @@ uvicorn src.servicio:app --host 0.0.0.0 --port 8000
 
 | Endpoint | Respuesta |
 |---|---|
-| `GET /health` | `{"estado": "ok", "lineas": ["clasificacion"], "modelo_version": "1.0.0"}` |
-| `POST /predict` | `{"linea", "modelo_version", "predicciones": [{"clase": 0/1, "probabilidad": p}, …]}`, una por instancia |
+| `GET /health` | `{"estado": "ok", "lineas": ["clasificacion", "regresion"], "modelo_version": "1.0.0"}` |
+| `POST /predict` | `{"linea", "modelo_version", "predicciones": [...]}`, una por instancia: `{"clase": 0/1, "probabilidad": p}` en clasificación y los días estimados (0 a 30) en regresión |
 | `GET /docs` | Documentación interactiva (Swagger) para probarla desde el navegador |
 
 Demostración con la petición de ejemplo:
@@ -149,6 +170,9 @@ Invoke-RestMethod http://localhost:8000/predict -Method Post -ContentType "appli
 | 19 | Con umbral 0,5 solo se detecta el 58 % de los diabéticos; máximo F1 y Youden coinciden en 0,35 | **Umbral 0,35** (sensibilidad 0,77), fijado dentro del pipeline con `FixedThresholdClassifier` |
 | 20 | Configuración cerrada con CV y validada una vez en test | El artefacto final se reentrena con los 12 750 pacientes (train + test) |
 | 21 | En el PC1 el ZIP llegó sin `data/processed/` ni artefactos | `src/empaquetar.py` los incluye explícitamente y falla si falta algún bloque |
+| 22 | Regresión: el boosting con error absoluto predice 0 a todos; los modelos de la media empatan en MAE ≈ 4,27 | Para la mediana, **modelo de dos partes** (¿algún día? y ¿cuántos?) |
+| 23 | El MAE del modelo de dos partes baja al subir el umbral, pero solo por predecir más ceros (media predicha de 4,4 a 3,4 días) | **Umbral 0,5 fijo**: es el que corresponde a la mediana por definición, no se ajusta a la métrica |
+| 24 | En CV 5 × 5, dos partes gana al boosting de Poisson en MAE en 25/25 particiones (−0,58 días); Poisson gana en RMSE y R² | **Dos partes con mediana**, por la métrica principal (MAE). Pendiente de confirmar la métrica de la fase competitiva |
 
 ## Limitaciones conocidas
 

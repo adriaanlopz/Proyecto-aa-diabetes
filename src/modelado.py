@@ -14,24 +14,30 @@ los carga sin depender del directorio desde el que se lance.
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 import numpy as np
 import pandas as pd
+from sklearn.base import BaseEstimator, RegressorMixin, clone
 from sklearn.compose import ColumnTransformer
-from sklearn.dummy import DummyClassifier
+from sklearn.dummy import DummyClassifier, DummyRegressor
 from sklearn.ensemble import (
     HistGradientBoostingClassifier,
+    HistGradientBoostingRegressor,
     RandomForestClassifier,
     VotingClassifier,
 )
-from sklearn.linear_model import LogisticRegression
+from sklearn.linear_model import LogisticRegression, PoissonRegressor, Ridge
 from sklearn.metrics import (
     average_precision_score,
     brier_score_loss,
     f1_score,
     log_loss,
+    mean_absolute_error,
+    mean_squared_error,
     precision_score,
+    r2_score,
     recall_score,
     roc_auc_score,
 )
@@ -266,6 +272,139 @@ def dependencia_parcial(modelo: Pipeline, X: pd.DataFrame, columna: str, valores
     return pd.Series(salida, name=columna)
 
 
+DIAS_MIN, DIAS_MAX = pp.RANGO_DIAS
+
+
+class RegresorAcotado(BaseEstimator, RegressorMixin):
+    def __init__(self, estimador: Any):
+        self.estimador = estimador
+
+    def fit(self, X, y):
+        self.estimador_ = clone(self.estimador).fit(X, y)
+        return self
+
+    def predict(self, X):
+        return np.clip(self.estimador_.predict(X), DIAS_MIN, DIAS_MAX)
+
+
+class DosPartes(BaseEstimator, RegressorMixin):
+    def __init__(self, clasificador: Any, regresor: Any, umbral: float | None = None):
+        self.clasificador = clasificador
+        self.regresor = regresor
+        self.umbral = umbral
+
+    def fit(self, X, y):
+        y = np.asarray(y, dtype=float)
+        positivos = y > 0
+        self.clasificador_ = clone(self.clasificador).fit(X, positivos.astype(int))
+        self.regresor_ = clone(self.regresor).fit(X[positivos], y[positivos])
+        return self
+
+    def predict(self, X):
+        prob = self.clasificador_.predict_proba(X)[:, 1]
+        dias = self.regresor_.predict(X)
+        if self.umbral is None:
+            return prob * dias
+        return np.where(prob >= self.umbral, dias, 0.0)
+
+
+def boosting_regresion(perdida: str = "poisson", **params: Any) -> HistGradientBoostingRegressor:
+    base = dict(
+        learning_rate=0.05,
+        max_iter=300,
+        max_leaf_nodes=15,
+        min_samples_leaf=40,
+        random_state=pp.SEMILLA,
+    )
+    return HistGradientBoostingRegressor(loss=perdida, **(base | params))
+
+
+def dos_partes(
+    umbral: float | None = None,
+    params_clasificador: dict | None = None,
+    params_regresor: dict | None = None,
+) -> DosPartes:
+    perdida = "squared_error" if umbral is None else "absolute_error"
+    return DosPartes(
+        gradient_boosting(**(params_clasificador or {})),
+        boosting_regresion(perdida, **(params_regresor or {})),
+        umbral,
+    )
+
+
+def construir_regresion(estimador: Any) -> Pipeline:
+    return construir_modelo("regresion", RegresorAcotado(estimador))
+
+
+def candidatos_regresion() -> dict[str, Any]:
+    return {
+        "Dummy (media)": DummyRegressor(strategy="mean"),
+        "Dummy (mediana = 0)": DummyRegressor(strategy="median"),
+        "Ridge": make_pipeline(FunctionTransformer(quitar_derivadas), Ridge(alpha=1.0)),
+        "GLM Poisson": make_pipeline(
+            FunctionTransformer(quitar_derivadas), PoissonRegressor(alpha=1e-3, max_iter=1000)
+        ),
+        "Boosting (error cuadrático)": boosting_regresion("squared_error"),
+        "Boosting (Poisson)": boosting_regresion("poisson"),
+        "Boosting (error absoluto)": boosting_regresion("absolute_error"),
+        "Dos partes (media)": dos_partes(),
+        "Dos partes (mediana)": dos_partes(umbral=0.5),
+    }
+
+
+def validacion_cruzada_regresion(y: pd.Series, repeticiones: int = 1) -> list:
+    if repeticiones == 1:
+        cv = StratifiedKFold(N_PLIEGUES, shuffle=True, random_state=pp.SEMILLA)
+    else:
+        cv = RepeatedStratifiedKFold(n_splits=N_PLIEGUES, n_repeats=repeticiones, random_state=pp.SEMILLA)
+    return list(cv.split(np.zeros(len(y)), pp.tramos_regresion(y)))
+
+
+def metricas_regresion(y, pred) -> dict[str, float]:
+    y = np.asarray(y, dtype=float)
+    pred = np.asarray(pred, dtype=float)
+    intermedio = (y > 0) & (y < DIAS_MAX)
+    return {
+        "MAE": mean_absolute_error(y, pred),
+        "RMSE": mean_squared_error(y, pred) ** 0.5,
+        "R²": r2_score(y, pred),
+        "MAE (0 días)": mean_absolute_error(y[y == 0], pred[y == 0]),
+        "MAE (1-29 días)": mean_absolute_error(y[intermedio], pred[intermedio]),
+        "MAE (30 días)": mean_absolute_error(y[y == DIAS_MAX], pred[y == DIAS_MAX]),
+        "Media predicha": float(pred.mean()),
+    }
+
+
+def evaluar_cv_regresion(modelo: Pipeline, X: pd.DataFrame, y: pd.Series, pliegues: list) -> pd.DataFrame:
+    filas = []
+    for entreno, valida in pliegues:
+        inicio = time.perf_counter()
+        ajustado = clone(modelo).fit(X.iloc[entreno], y.iloc[entreno])
+        segundos = time.perf_counter() - inicio
+        fila = metricas_regresion(y.iloc[valida], ajustado.predict(X.iloc[valida]))
+        filas.append(fila | {"Tiempo ajuste (s)": segundos})
+    return pd.DataFrame(filas)
+
+
+def metricas_regresion_con_ic(y, pred, n_boot: int = 1000, nivel: float = 0.95) -> pd.DataFrame:
+    y = np.asarray(y, dtype=float)
+    pred = np.asarray(pred, dtype=float)
+    rng = np.random.default_rng(pp.SEMILLA)
+    muestras = []
+    for _ in range(n_boot):
+        idx = rng.integers(0, len(y), len(y))
+        muestras.append(metricas_regresion(y[idx], pred[idx]))
+    muestras = pd.DataFrame(muestras)
+    alfa = (1 - nivel) / 2
+    return pd.DataFrame(
+        {
+            "valor": metricas_regresion(y, pred),
+            "IC inf.": muestras.quantile(alfa),
+            "IC sup.": muestras.quantile(1 - alfa),
+        }
+    )
+
+
 # ---------------------------------------------------------------------------
 # Configuración final (fijada a partir de notebooks/03_modelado_clasificacion.ipynb)
 # ---------------------------------------------------------------------------
@@ -286,6 +425,12 @@ CONFIG_FINAL: dict[str, dict[str, Any]] = {
         # Máximo F1 sobre probabilidades fuera de pliegue (sección 7.2)
         "umbral": 0.35,
     },
+    "regresion": {
+        "estimador": "dos_partes",
+        "umbral": 0.5,
+        "params_clasificador": {},
+        "params_regresor": {},
+    },
 }
 
 
@@ -294,6 +439,14 @@ def construir_final(linea: str) -> Pipeline:
     if linea not in CONFIG_FINAL:
         raise ValueError(f"La línea {linea!r} aún no tiene modelo final. Disponibles: {list(CONFIG_FINAL)}")
     cfg = CONFIG_FINAL[linea]
+    if linea == "regresion":
+        if cfg["estimador"] == "dos_partes":
+            estimador = dos_partes(cfg["umbral"], cfg["params_clasificador"], cfg["params_regresor"])
+        elif cfg["estimador"] == "boosting_poisson":
+            estimador = boosting_regresion("poisson", **cfg["params_regresor"])
+        else:
+            raise ValueError(f"Estimador desconocido en CONFIG_FINAL: {cfg['estimador']!r}")
+        return construir_regresion(estimador)
     if cfg["estimador"] == "ensamble":
         estimador = ensamble(cfg["params_logistica"], cfg["params_boosting"])
     elif cfg["estimador"] == "logistica_splines":

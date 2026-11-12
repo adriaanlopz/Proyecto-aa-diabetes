@@ -53,8 +53,13 @@ def entrenar(linea: str) -> Path:
 
     # Comprobación mínima antes de guardar: contrato de columnas y una predicción por fila
     assert list(modelo.feature_names_in_) == columnas
-    proba = modelo.predict_proba(X.head(50))[:, 1]
-    assert len(proba) == 50 and ((proba >= 0) & (proba <= 1)).all()
+    if interna == "clasificacion":
+        salida = modelo.predict_proba(X.head(50))[:, 1]
+        rango = (0, 1)
+    else:
+        salida = modelo.predict(X.head(50))
+        rango = pp.RANGO_DIAS
+    assert len(salida) == 50 and ((salida >= rango[0]) & (salida <= rango[1])).all()
 
     RUTA_ARTEFACTOS.mkdir(parents=True, exist_ok=True)
     ruta_modelo = RUTA_ARTEFACTOS / f"{PREFIJO}_{linea}.joblib"
@@ -66,7 +71,7 @@ def entrenar(linea: str) -> Path:
         "modelo_version": md.VERSION_MODELO,
         "entrenado": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "n_entrenamiento": int(len(y)),
-        "prevalencia_entrenamiento": round(float(y.mean()), 4),
+        ("prevalencia_entrenamiento" if interna == "clasificacion" else "media_entrenamiento"): round(float(y.mean()), 4),
         "columnas_entrada": columnas,
         "configuracion": md.CONFIG_FINAL[interna],
         "evaluacion_notebook": json.loads(ruta_metricas.read_text(encoding="utf-8")) if ruta_metricas.is_file() else None,
