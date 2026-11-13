@@ -31,7 +31,7 @@ def test_health_declara_la_linea_servida(cliente):
     assert r.status_code == 200
     cuerpo = r.json()
     assert cuerpo["estado"] == "ok"
-    assert cuerpo["lineas"] == ["clasificacion"]
+    assert cuerpo["lineas"] == ["clasificacion", "clusterizacion", "regresion"]
     assert cuerpo["modelo_version"]
 
 
@@ -122,8 +122,11 @@ def test_columna_requerida_ausente_en_todas_las_instancias(cliente, test_crudo):
     assert "imc" in r.json()["detail"]
 
 
-@pytest.mark.parametrize("linea", ["regresion", "clusterizacion"])
-def test_linea_no_servida(cliente, test_crudo, linea):
+@pytest.mark.parametrize("linea", ["clasificacion", "regresion", "clusterizacion"])
+def test_linea_no_servida(cliente, test_crudo, linea, monkeypatch):
+    import src.servicio as servicio
+
+    monkeypatch.delitem(servicio.MODELOS, linea)
     r = pedir(cliente, a_instancias(test_crudo.head(2)), linea=linea)
     assert r.status_code == 422
     assert "no está servida" in r.json()["detail"]

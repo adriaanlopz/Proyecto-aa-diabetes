@@ -28,6 +28,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import joblib
+import numpy as np
 import sklearn
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -42,10 +43,22 @@ RUTA_METRICAS = pp.RUTA_PROYECTO / "reports" / "metricas_{linea}.json"
 LINEA_INTERNA = {"clasificacion": "clasificacion", "regresion": "regresion", "clusterizacion": "clustering"}
 
 
+def resumen_objetivo(modelo, X, y, interna: str) -> dict:
+    if interna == "clasificacion":
+        return {"prevalencia_entrenamiento": round(float(y.mean()), 4)}
+    if interna == "regresion":
+        return {"media_entrenamiento": round(float(y.mean()), 4)}
+    grupos, n = np.unique(modelo.predict(X), return_counts=True)
+    return {"pacientes_por_grupo": {int(g): int(c) for g, c in zip(grupos, n)}}
+
+
 def entrenar(linea: str) -> Path:
     interna = LINEA_INTERNA[linea]
     crudo = pp.cargar_datos()
-    X, y = pp.separar_target(crudo, interna)
+    if interna == "clustering":
+        X, y = crudo, None
+    else:
+        X, y = pp.separar_target(crudo, interna)
     columnas = pp.columnas_crudas(interna)
     X = X[columnas]
 
@@ -53,8 +66,16 @@ def entrenar(linea: str) -> Path:
 
     # Comprobación mínima antes de guardar: contrato de columnas y una predicción por fila
     assert list(modelo.feature_names_in_) == columnas
-    proba = modelo.predict_proba(X.head(50))[:, 1]
-    assert len(proba) == 50 and ((proba >= 0) & (proba <= 1)).all()
+    if interna == "clasificacion":
+        salida = modelo.predict_proba(X.head(50))[:, 1]
+        rango = (0, 1)
+    elif interna == "regresion":
+        salida = modelo.predict(X.head(50))
+        rango = pp.RANGO_DIAS
+    else:
+        salida = modelo.predict(X.head(50))
+        rango = (0, md.CONFIG_FINAL[interna]["k"] - 1)
+    assert len(salida) == 50 and ((salida >= rango[0]) & (salida <= rango[1])).all()
 
     RUTA_ARTEFACTOS.mkdir(parents=True, exist_ok=True)
     ruta_modelo = RUTA_ARTEFACTOS / f"{PREFIJO}_{linea}.joblib"
@@ -65,8 +86,8 @@ def entrenar(linea: str) -> Path:
         "linea": linea,
         "modelo_version": md.VERSION_MODELO,
         "entrenado": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "n_entrenamiento": int(len(y)),
-        "prevalencia_entrenamiento": round(float(y.mean()), 4),
+        "n_entrenamiento": int(len(X)),
+        **resumen_objetivo(modelo, X, y, interna),
         "columnas_entrada": columnas,
         "configuracion": md.CONFIG_FINAL[interna],
         "evaluacion_notebook": json.loads(ruta_metricas.read_text(encoding="utf-8")) if ruta_metricas.is_file() else None,
@@ -76,7 +97,7 @@ def entrenar(linea: str) -> Path:
     ruta_json.write_text(json.dumps(metadatos, indent=2, ensure_ascii=False), encoding="utf-8")
 
     tam = ruta_modelo.stat().st_size / 1024
-    print(f"[OK] {ruta_modelo.relative_to(pp.RUTA_PROYECTO)} ({tam:,.0f} KB) - {len(y):,} pacientes - {len(columnas)} columnas")
+    print(f"[OK] {ruta_modelo.relative_to(pp.RUTA_PROYECTO)} ({tam:,.0f} KB) - {len(X):,} pacientes - {len(columnas)} columnas")
     print(f"[OK] {ruta_json.relative_to(pp.RUTA_PROYECTO)}")
     return ruta_modelo
 

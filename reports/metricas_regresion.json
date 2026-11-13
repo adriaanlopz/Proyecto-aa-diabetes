@@ -1,0 +1,87 @@
+{
+  "linea": "regresion",
+  "modelo": "Dos partes (mediana)",
+  "config": {
+    "estimador": "dos_partes",
+    "umbral": 0.5,
+    "params_clasificador": {},
+    "params_regresor": {}
+  },
+  "columnas_entrada": [
+    "imc",
+    "dias_salud_mental_mala",
+    "grupo_edad",
+    "salud_general",
+    "nivel_educativo",
+    "nivel_ingresos",
+    "presion_alta",
+    "colesterol_alto",
+    "chequeo_colesterol_5a",
+    "fumador",
+    "ictus",
+    "enfermedad_cardiaca",
+    "actividad_fisica",
+    "consume_fruta",
+    "consume_verdura",
+    "consumo_alcohol_alto",
+    "dificultad_caminar",
+    "sexo"
+  ],
+  "cv_repetida_5x5": {
+    "MAE": 3.6967,
+    "RMSE": 7.4803,
+    "R²": 0.3692
+  },
+  "alternativa_media": {
+    "modelo": "Boosting Poisson ajustado",
+    "params": {
+      "learning_rate": 0.0143,
+      "max_iter": 561,
+      "max_leaf_nodes": 6,
+      "min_samples_leaf": 20,
+      "l2_regularization": 0.0774
+    },
+    "cv_repetida_5x5": {
+      "MAE": 4.2748,
+      "RMSE": 6.9549,
+      "R²": 0.4548
+    }
+  },
+  "test": {
+    "MAE": {
+      "valor": 3.7164,
+      "IC inf.": 3.4379,
+      "IC sup.": 3.9722
+    },
+    "RMSE": {
+      "valor": 7.6439,
+      "IC inf.": 7.2042,
+      "IC sup.": 8.0676
+    },
+    "R²": {
+      "valor": 0.3459,
+      "IC inf.": 0.2778,
+      "IC sup.": 0.4134
+    },
+    "MAE (0 días)": {
+      "valor": 1.2679,
+      "IC inf.": 1.0568,
+      "IC sup.": 1.5001
+    },
+    "MAE (1-29 días)": {
+      "valor": 5.9659,
+      "IC inf.": 5.5461,
+      "IC sup.": 6.3831
+    },
+    "MAE (30 días)": {
+      "valor": 12.2228,
+      "IC inf.": 10.73,
+      "IC sup.": 13.7174
+    },
+    "Media predicha": {
+      "valor": 4.4275,
+      "IC inf.": 4.0978,
+      "IC sup.": 4.7397
+    }
+  }
+}

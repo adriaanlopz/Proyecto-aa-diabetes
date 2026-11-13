@@ -143,11 +143,9 @@ COLS_CLUSTERING = [
     "grupo_edad",
     "imc",
     "salud_general",
-    "dias_salud_fisica_mala",
     "dias_salud_mental_mala",
     "presion_alta",
     "colesterol_alto",
-    "diabetes",
     "enfermedad_cardiaca",
     "dificultad_caminar",
     "actividad_fisica",
@@ -265,11 +263,15 @@ def anadir_features(df: pd.DataFrame) -> pd.DataFrame:
       detectados en el EDA, por si la ausencia en sí es informativa.
     """
     df = df.copy()
-    df["imc_categoria"] = pd.cut(df["imc"], _CORTES_IMC, labels=False, right=False) + 1
     factores = ["presion_alta", "colesterol_alto", "fumador", "enfermedad_cardiaca", "ictus"]
-    df["n_factores_riesgo_cv"] = df[factores].sum(axis=1, min_count=1)
-    df["falta_habitos"] = df["fumador"].isna().astype(float)
-    df["falta_imc"] = df["imc"].isna().astype(float)
+    if "imc" in df.columns:
+        df["imc_categoria"] = pd.cut(df["imc"], _CORTES_IMC, labels=False, right=False) + 1
+    if set(factores) <= set(df.columns):
+        df["n_factores_riesgo_cv"] = df[factores].sum(axis=1, min_count=1)
+    if "fumador" in df.columns:
+        df["falta_habitos"] = df["fumador"].isna().astype(float)
+    if "imc" in df.columns:
+        df["falta_imc"] = df["imc"].isna().astype(float)
     return df
 
 
@@ -288,8 +290,8 @@ def columnas_features(linea: str, con_objetivo_cruzado: bool = False) -> dict[st
 
     - Clasificación: todo salvo los dos objetivos.
     - Regresión: todo salvo los dos objetivos.
-    - Clustering: subconjunto interpretable `COLS_CLUSTERING` (incluye ambos
-      objetivos, porque describen el perfil de salud y no hay nada que predecir).
+    - Clustering: subconjunto interpretable `COLS_CLUSTERING`, sin los dos objetivos
+      (se usan después para describir y validar los grupos; notebook 05).
 
     **Objetivos cruzados** (revisión pedida en el PC1): usar el objetivo de una línea
     como predictor de la otra (`dias_salud_fisica_mala` → `diabetes`, `diabetes` →
@@ -300,10 +302,11 @@ def columnas_features(linea: str, con_objetivo_cruzado: bool = False) -> dict[st
     `con_objetivo_cruzado=True` las vuelve a incluir solo para reproducir esa prueba.
     """
     if linea == "clustering":
+        cols = COLS_CLUSTERING + ([TARGET_REGR, TARGET_CLASIF] if con_objetivo_cruzado else [])
         return {
-            "continuas": [c for c in COLS_CLUSTERING if c in COLS_CONTINUAS + [TARGET_REGR]],
-            "ordinales": [c for c in COLS_CLUSTERING if c in COLS_ORDINALES],
-            "binarias": [c for c in COLS_CLUSTERING if c in COLS_BINARIAS + [TARGET_CLASIF]],
+            "continuas": [c for c in cols if c in COLS_CONTINUAS + [TARGET_REGR]],
+            "ordinales": [c for c in cols if c in COLS_ORDINALES],
+            "binarias": [c for c in cols if c in COLS_BINARIAS + [TARGET_CLASIF]],
         }
     if linea not in ("clasificacion", "regresion"):
         raise ValueError(f"Línea desconocida: {linea!r}. Opciones: {LINEAS}")
