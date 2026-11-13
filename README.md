@@ -102,7 +102,7 @@ Proyecto/
 │   ├── metricas_regresion.json     métricas de CV y test (las genera el notebook 04)
 │   └── metricas_clustering.json    métricas y perfiles de los grupos (los genera el notebook 05)
 ├── tests/                          pruebas del contrato de la API (las tres líneas)
-└── ejemplos/peticion_clasificacion.json   petición de demostración (5 pacientes reales de test)
+└── ejemplos_api/peticion_<linea>.json     peticiones de demostración de las tres líneas (5 pacientes ficticios)
 ```
 
 ## Cómo reproducir
@@ -149,13 +149,15 @@ Demostración con la petición de ejemplo:
 
 ```bash
 curl http://localhost:8000/health
-curl -X POST http://localhost:8000/predict -H "Content-Type: application/json" --data-binary @ejemplos/peticion_clasificacion.json
+curl -X POST http://localhost:8000/predict -H "Content-Type: application/json" --data-binary @ejemplos_api/peticion_clasificacion.json
 ```
 
 ```powershell
 Invoke-RestMethod http://localhost:8000/health
-Invoke-RestMethod http://localhost:8000/predict -Method Post -ContentType "application/json" -InFile ejemplos/peticion_clasificacion.json
+Invoke-RestMethod http://localhost:8000/predict -Method Post -ContentType "application/json; charset=utf-8" -InFile ejemplos_api/peticion_clasificacion.json
 ```
+
+Cambiando `clasificacion` por `regresion` o `clusterizacion` en el nombre del fichero se prueban las otras dos líneas. Los pacientes son ficticios: traen columnas personales inventadas, codificaciones mezcladas y valores ausentes, para enseñar que el servicio los tolera.
 
 **Qué acepta.** Instancias **crudas**, tal y como vienen en el CSV:
 - Las columnas sobrantes se ignoran: PII, id, `usuario_alta_datos` y los objetivos.
