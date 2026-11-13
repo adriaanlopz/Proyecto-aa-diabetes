@@ -35,6 +35,7 @@ CONTENIDO = [
     ("reports/*.json", True),
     ("tests/*.py", True),
     ("ejemplos/*.json", True),
+    ("ejemplos_api/*.json", True),
 ]
 
 
