@@ -4,7 +4,7 @@ Proyecto de la asignatura de Aprendizaje Automático (UIE). A partir de la encue
 
 | Línea | Tarea | Objetivo | Estado |
 |---|---|---|---|
-| Clusterización | Perfiles de paciente interpretables | — | Preprocesado |
+| Clusterización | Perfiles de paciente interpretables | — | **Modelada y servida en la API** |
 | Clasificación | Cribado de diabetes | `diabetes` (sí/no) | **Modelada y servida en la API** |
 | Regresión | Carga de enfermedad | `dias_salud_fisica_mala` (0–30) | **Modelada y servida en la API** |
 
@@ -22,7 +22,7 @@ Proyecto de la asignatura de Aprendizaje Automático (UIE). A partir de la encue
 - [x] API común respondiendo para `clasificacion` → `src/servicio.py`, con 16 pruebas en `tests/`
 - [x] ZIP de entrega con `data/processed/` y artefactos → `python src/empaquetar.py`
 - [x] Regresión modelada y servida → `notebooks/04_modelado_regresion.ipynb` y `python src/entrenar.py regresion`
-- [ ] Clusterización (siguiente fase)
+- [x] Clusterización modelada y servida → `notebooks/05_clusterizacion.ipynb` y `python src/entrenar.py clusterizacion`
 
 ## Resultados: clasificación (`diabetes`)
 
@@ -54,6 +54,20 @@ Mejora un 26 % el MAE de la mejor referencia. Las variables que más pesan son l
 
 **Decisión del equipo: dos partes (mediana).** El MAE premia predecir 0 (60 % de ceros). El modelo de la media (boosting de Poisson) tiene peor MAE (4,28) pero mejor RMSE (6,96) y R² (0,46), y acierta el total de días (el de dos partes lo subestima un 12 %). Se preguntará al profesor la métrica de la fase competitiva; si fuera el RMSE, cambiar de modelo es una línea en `modelado.CONFIG_FINAL`.
 
+## Resultados: clusterización (perfiles de paciente)
+
+Modelo: **K-means con 5 grupos** sobre 10 variables de salud y hábitos, imputadas y estandarizadas. Los objetivos y las sociodemográficas no se usan para formar los grupos, solo para describirlos. Estabilidad entre mitades de los datos: ARI = 0,85.
+
+| Grupo | Pacientes | Perfil en una frase | Diabetes¹ | Días salud física¹ |
+|---|---|---|---|---|
+| 1 · Sanos y activos | 39 % | Los más jóvenes, sin hipertensión, activos y con buena salud percibida | 10 % | 1,5 |
+| 2 · Hipertensos sin síntomas | 30 % | Mayores con hipertensión y colesterol, pero que se encuentran bien | 39 % | 2,8 |
+| 4 · Cardiópatas | 11 % | Los de más edad, todos con cardiopatía; más hombres | 60 % | 8,3 |
+| 0 · Movilidad reducida y obesidad | 12 % | Dificultad para caminar (99 %), IMC medio 32,6 y salud regular o mala | 55 % | 11,1 |
+| 3 · Malestar psicológico | 8 % | 27 días al mes de mala salud mental y la peor salud percibida | 51 % | 16,3 |
+
+¹ No se usaron para formar los grupos: que los separen tanto valida que los perfiles tienen sentido clínico. Detalle completo y figuras 32–34 en el notebook 05.
+
 ## Estructura
 
 ```
@@ -71,19 +85,23 @@ Proyecto/
 │   ├── 01_eda.ipynb                EDA (resumen ejecutivo, 10 secciones, figuras 01–20)
 │   ├── 02_preprocesado.ipynb       ejecución del preprocesado y comprobaciones
 │   ├── 03_modelado_clasificacion.ipynb   selección, ajuste, umbral, test e interpretación (figuras 21–28)
-│   └── 04_modelado_regresion.ipynb       métrica, comparación, ajuste, test e interpretación (figuras 29–31)
+│   ├── 04_modelado_regresion.ipynb       métrica, comparación, ajuste, test e interpretación (figuras 29–31)
+│   └── 05_clusterizacion.ipynb           variables, algoritmo, número de grupos y perfiles (figuras 32–34)
 ├── data/processed/                 datos limpios y particiones transformadas (generado por el notebook 02)
 ├── models/preprocesadores/         preprocesadores ajustados solo con train (notebook 02)
 ├── artifacts/
 │   ├── proy_modelo_clasificacion.joblib   modelo que carga la API (datos crudos → predicción)
 │   ├── proy_modelo_clasificacion.json     metadatos: versión, columnas, configuración y métricas
 │   ├── proy_modelo_regresion.joblib       modelo de regresión que carga la API
-│   └── proy_modelo_regresion.json         sus metadatos
+│   ├── proy_modelo_regresion.json         sus metadatos
+│   ├── proy_modelo_clusterizacion.joblib  modelo de clusterización que carga la API
+│   └── proy_modelo_clusterizacion.json    sus metadatos
 ├── reports/
 │   ├── figures/                    figuras para informe y slides (PNG, 150 dpi)
 │   ├── metricas_clasificacion.json métricas de CV y test (las genera el notebook 03)
-│   └── metricas_regresion.json     métricas de CV y test (las genera el notebook 04)
-├── tests/                          pruebas del contrato de la API (clasificación y regresión)
+│   ├── metricas_regresion.json     métricas de CV y test (las genera el notebook 04)
+│   └── metricas_clustering.json    métricas y perfiles de los grupos (los genera el notebook 05)
+├── tests/                          pruebas del contrato de la API (las tres líneas)
 └── ejemplos/peticion_clasificacion.json   petición de demostración (5 pacientes reales de test)
 ```
 
@@ -97,10 +115,12 @@ python -m jupyter nbconvert --to notebook --execute --inplace notebooks/01_eda.i
 python -m jupyter nbconvert --to notebook --execute --inplace notebooks/02_preprocesado.ipynb
 python -m jupyter nbconvert --to notebook --execute --inplace notebooks/03_modelado_clasificacion.ipynb
 python -m jupyter nbconvert --to notebook --execute --inplace notebooks/04_modelado_regresion.ipynb
+python -m jupyter nbconvert --to notebook --execute --inplace notebooks/05_clusterizacion.ipynb
 
 # 2. Artefacto final que sirve la API (reentrena con los 12 750 pacientes)
 python src/entrenar.py clasificacion
 python src/entrenar.py regresion
+python src/entrenar.py clusterizacion
 
 # 3. Pruebas del servicio
 python -m pytest tests -q
@@ -113,7 +133,7 @@ Todo usa una semilla fija (`SEMILLA = 42`), así que el resultado es reproducibl
 
 ## API
 
-El servicio implementa el contrato común con la plantilla del profesor, sin cambios. Carga los artefactos de `artifacts/` y sirve las líneas cuyo artefacto existe; ahora mismo, `clasificacion` y `regresion`.
+El servicio implementa el contrato común con la plantilla del profesor, sin cambios. Carga los artefactos de `artifacts/` y sirve las líneas cuyo artefacto existe; ahora mismo, las tres.
 
 ```bash
 uvicorn src.servicio:app --host 0.0.0.0 --port 8000
@@ -121,8 +141,8 @@ uvicorn src.servicio:app --host 0.0.0.0 --port 8000
 
 | Endpoint | Respuesta |
 |---|---|
-| `GET /health` | `{"estado": "ok", "lineas": ["clasificacion", "regresion"], "modelo_version": "1.0.0"}` |
-| `POST /predict` | `{"linea", "modelo_version", "predicciones": [...]}`, una por instancia: `{"clase": 0/1, "probabilidad": p}` en clasificación y los días estimados (0 a 30) en regresión |
+| `GET /health` | `{"estado": "ok", "lineas": ["clasificacion", "clusterizacion", "regresion"], "modelo_version": "1.0.0"}` |
+| `POST /predict` | `{"linea", "modelo_version", "predicciones": [...]}`, una por instancia: `{"clase": 0/1, "probabilidad": p}` en clasificación, los días estimados (0 a 30) en regresión y el número de grupo (0 a 4) en clusterización |
 | `GET /docs` | Documentación interactiva (Swagger) para probarla desde el navegador |
 
 Demostración con la petición de ejemplo:
@@ -160,7 +180,7 @@ Invoke-RestMethod http://localhost:8000/predict -Method Post -ContentType "appli
 | 9 | Sin multicolinealidad entre los predictores originales (VIF ≤ 1,7) | Se mantienen todos; en modelos lineales, usar variable derivada **o** sus componentes |
 | 10 | `diabetes` remuestreada al 33 % | Partición estratificada; probabilidades no poblacionales (limitación) |
 | 11 | `dias_salud_fisica_mala`: 60 % ceros, 9 % en 30, sobredispersión ×18, *heaping* | Estratificar por tramos 0 / 1–29 / 30; métrica MAE; valorar modelos *hurdle*/Tweedie |
-| 12 | Clustering: continuo dominado por "carga de enfermedad" y "edad cardiometabólica vs malestar" | 12 variables de salud y hábitos estandarizadas; sociodemográficas solo para describir |
+| 12 | Clustering: continuo dominado por "carga de enfermedad" y "edad cardiometabólica vs malestar" | Variables de salud y hábitos estandarizadas (10 desde la decisión #25); sociodemográficas solo para describir |
 | 13 | **Revisión del PC1.** El objetivo de una línea como predictor de la otra no aporta nada: ΔROC-AUC = 0,0000 con `dias_salud_fisica_mala` en clasificación, ΔMAE = −0,002 días con `diabetes` en regresión (CV pareada) | **Descartados en ambas líneas.** En cribado el diagnóstico es justo lo desconocido, y exigirlos en la API arriesgaba un 422. Clustering los conserva (describen el perfil) |
 | 14 | El modelo solo necesita 18 columnas crudas | Se ajusta con `pp.columnas_crudas`: `feature_names_in_` pide solo eso y el servicio descarta el resto |
 | 15 | Ranking de pacientes para citar → la métrica relevante es de orden; la API devuelve probabilidad | Selección por **ROC-AUC**; calidad de la probabilidad con Brier/log-loss; exactitud nunca (el 67 % es trivial) |
@@ -173,6 +193,9 @@ Invoke-RestMethod http://localhost:8000/predict -Method Post -ContentType "appli
 | 22 | Regresión: el boosting con error absoluto predice 0 a todos; los modelos de la media empatan en MAE ≈ 4,27 | Para la mediana, **modelo de dos partes** (¿algún día? y ¿cuántos?) |
 | 23 | El MAE del modelo de dos partes baja al subir el umbral, pero solo por predecir más ceros (media predicha de 4,4 a 3,4 días) | **Umbral 0,5 fijo**: es el que corresponde a la mediana por definición, no se ajusta a la métrica |
 | 24 | En CV 5 × 5, dos partes gana al boosting de Poisson en MAE en 25/25 particiones (−0,58 días); Poisson gana en RMSE y R² | **Dos partes con mediana**, por la métrica principal (MAE). Pendiente de confirmar la métrica de la fase competitiva |
+| 25 | Clustering sin los objetivos: mejor silueta (0,185 frente a 0,143) y Davies-Bouldin (1,76 frente a 2,07) con 5 grupos, estabilidad parecida | **Se forman sin `diabetes` ni `dias_salud_fisica_mala`**: quedan como validación externa y la API no los exige |
+| 26 | Siluetas bajas en todo (0,16–0,24): un continuo. GMM inestable desde 3 grupos (ARI ≤ 0,83); K-means estable (0,81–0,97) | **K-means con 5 grupos**: mejor separación que con 4 y un perfil nuevo con sentido clínico (malestar psicológico) |
+| 27 | `anadir_features` exigía `ictus`, que el clustering no usa, y el modelo no podía entrenarse solo con sus columnas | Cada variable derivada se calcula solo si están sus columnas de origen |
 
 ## Limitaciones conocidas
 

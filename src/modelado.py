@@ -20,6 +20,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 from sklearn.base import BaseEstimator, RegressorMixin, clone
+from sklearn.cluster import KMeans
 from sklearn.compose import ColumnTransformer
 from sklearn.dummy import DummyClassifier, DummyRegressor
 from sklearn.ensemble import (
@@ -30,8 +31,11 @@ from sklearn.ensemble import (
 )
 from sklearn.linear_model import LogisticRegression, PoissonRegressor, Ridge
 from sklearn.metrics import (
+    adjusted_rand_score,
     average_precision_score,
     brier_score_loss,
+    calinski_harabasz_score,
+    davies_bouldin_score,
     f1_score,
     log_loss,
     mean_absolute_error,
@@ -40,6 +44,7 @@ from sklearn.metrics import (
     r2_score,
     recall_score,
     roc_auc_score,
+    silhouette_score,
 )
 from sklearn.model_selection import (
     FixedThresholdClassifier,
@@ -405,6 +410,37 @@ def metricas_regresion_con_ic(y, pred, n_boot: int = 1000, nivel: float = 0.95) 
     )
 
 
+def kmeans(k: int, semilla: int = pp.SEMILLA) -> KMeans:
+    return KMeans(n_clusters=k, n_init=20, random_state=semilla)
+
+
+def construir_clustering(estimador: Any) -> Pipeline:
+    return construir_modelo("clustering", estimador)
+
+
+def metricas_clustering(X: np.ndarray, etiquetas: np.ndarray, n_silueta: int = 4000) -> dict[str, float]:
+    rng = np.random.default_rng(pp.SEMILLA)
+    muestra = rng.choice(len(X), min(n_silueta, len(X)), replace=False)
+    tamanos = np.bincount(etiquetas)
+    return {
+        "Silueta": silhouette_score(X[muestra], etiquetas[muestra]),
+        "Davies-Bouldin": davies_bouldin_score(X, etiquetas),
+        "Calinski-Harabasz": calinski_harabasz_score(X, etiquetas),
+        "Grupo más pequeño (%)": 100 * tamanos.min() / len(etiquetas),
+    }
+
+
+def estabilidad_clustering(construir, X: pd.DataFrame, k: int, repeticiones: int = 5) -> float:
+    aris = []
+    for r in range(repeticiones):
+        orden = np.random.default_rng(r).permutation(len(X))
+        mitad_a, mitad_b = orden[: len(X) // 2], orden[len(X) // 2 :]
+        modelo_a = construir(k, r).fit(X.iloc[mitad_a])
+        modelo_b = construir(k, r + 100).fit(X.iloc[mitad_b])
+        aris.append(adjusted_rand_score(modelo_a.predict(X), modelo_b.predict(X)))
+    return float(np.mean(aris))
+
+
 # ---------------------------------------------------------------------------
 # Configuración final (fijada a partir de notebooks/03_modelado_clasificacion.ipynb)
 # ---------------------------------------------------------------------------
@@ -431,6 +467,10 @@ CONFIG_FINAL: dict[str, dict[str, Any]] = {
         "params_clasificador": {},
         "params_regresor": {},
     },
+    "clustering": {
+        "estimador": "kmeans",
+        "k": 5,
+    },
 }
 
 
@@ -439,6 +479,10 @@ def construir_final(linea: str) -> Pipeline:
     if linea not in CONFIG_FINAL:
         raise ValueError(f"La línea {linea!r} aún no tiene modelo final. Disponibles: {list(CONFIG_FINAL)}")
     cfg = CONFIG_FINAL[linea]
+    if linea == "clustering":
+        if cfg["estimador"] != "kmeans":
+            raise ValueError(f"Estimador desconocido en CONFIG_FINAL: {cfg['estimador']!r}")
+        return construir_clustering(kmeans(cfg["k"]))
     if linea == "regresion":
         if cfg["estimador"] == "dos_partes":
             estimador = dos_partes(cfg["umbral"], cfg["params_clasificador"], cfg["params_regresor"])
